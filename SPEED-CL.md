@@ -212,11 +212,6 @@ LD_LIBRARY_PATH=/vendor/lib64:$LD_LIBRARY_PATH build-cl/bin/sd-cli \
   layers), not conv2d. Tuning the OpenCL mul_mat kernels for Adreno could yield
   larger gains than further conv2d work.
 
-- **Flash attention**: `--fa` flag for fused attention — reduces memory and compute
-  for attention layers.
-
-- **CLIP offload**: `--clip-on-cpu` frees ~698 MB VRAM at cost of ~200ms slower conditioning.
-
 - **VAE tiling**: `--vae-tiling` for 768×768+ resolution on GPU.
 
 - **q8_0 conv2d kernel**: Direct convolution on quantized weights using
