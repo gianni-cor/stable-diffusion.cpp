@@ -13,6 +13,8 @@ Benchmark: 512×512, 20 steps, Euler A, seed 42, `--diffusion-conv-direct --vae-
 | 0a | im2col + matmul, `--vae-on-cpu` | 16.26 s/it | 326.20s | 60.16s (CPU) | 386.77s | — |
 | 1 | **Direct conv2d (baseline, BS_CRS=16)** | **7.07 s/it** | **141.33s** | **10.34s** | **152.20s** | **1.0× (baseline)** |
 | 2 | **Optimized (BS_CRS=32, 1×1 fast path, contiguous weights)** | **6.27 s/it** | **125.33s** | **10.49s** | **136.16s** | **1.12×** |
+| ~~3~~ | ~~Eliminate convert_float in inner loop (rejected)~~ | ~~5.82 s/it~~ | — | — | — | ~~no gain~~ |
+| 4 | **Incremental spatial indices in B-tile loading** | **5.63 s/it** | **~112.6s (est.)** | **~9.0s** | **~121.6s (est.)** | **1.25×** |
 
 ---
 
@@ -64,6 +66,45 @@ max alloc limit, enabling VAE decode on GPU in 10.34s.
   decode_first_stage completed, taking 10.49s
   generate_image completed in 136.16s
 ```
+
+### 3. Eliminate convert_float in inner loop (REJECTED) — no measurable gain
+
+**What changed:** Moved `convert_float(regA)` from the inner MAD loop to the
+tile load phase, converting half→float once per `crs_l` instead of per-MAD.
+
+**Why it didn't help:** A/B test at matched thermal conditions showed <0.5%
+difference (5.79 vs 5.82 s/step). The Adreno OpenCL compiler already optimizes
+this — either hoisting the conversion or pipelining it with the MAD instruction.
+
+**Decision:** Reverted.
+
+### 4. Incremental spatial indices in B-tile loading — 5.63 s/it (+2.8%)
+
+**What changed:** In the B-tile (input data) loading, the 4 vector elements
+(VEC_SIZE=4) are consecutive in NPQ. Previously, each element independently
+computed its spatial position via 2 integer divisions:
+```
+N_idx = npq_g / (OH * OW);    // division 1
+OH_idx = pq_idx / OW;         // division 2
+```
+That's 8 divisions per thread per B-tile element group. Now we compute once
+for v=0 and increment for v=1,2,3:
+```
+ow++; if (ow >= OW) { ow = 0; oh++; if (oh >= OH) { oh = 0; n++; } }
+```
+Replaces 6 divisions with 3 compare/increment operations.
+
+**A/B results (5 steps, 2 runs each, matched thermal):**
+
+| Run | Before | After | Start temp |
+|-----|--------|-------|------------|
+| 1 | 5.80 s/it (29.02s) | 5.64 s/it (28.22s) | 33°C / 27°C |
+| 2 | 5.78 s/it (29.00s) | 5.62 s/it (28.15s) | 26°C / 31°C |
+| **Avg** | **5.79 s/it** | **5.63 s/it** | |
+
+"After" at 31°C (warmer) still beats "before" at 26°C (cooler), confirming
+the gain is real. The ~3% improvement applies to both sampling and VAE decode
+since both use the same conv2d kernel.
 
 ---
 
