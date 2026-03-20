@@ -206,13 +206,45 @@ LD_LIBRARY_PATH=/vendor/lib64:$LD_LIBRARY_PATH build-cl/bin/sd-cli \
 
 ---
 
-## Remaining optimization avenues
+## Rejected optimizations
 
-- **mul_mat kernel tuning**: The U-Net spends most time in mul_mat (attention, linear
-  layers), not conv2d. Tuning the OpenCL mul_mat kernels for Adreno could yield
-  larger gains than further conv2d work.
+### conv2d: eliminate convert_float in inner loop — no gain
+
+Moving `convert_float(regA)` from the inner MAD loop to the tile load phase.
+A/B test: <0.5% difference. The Adreno OpenCL compiler already optimizes this.
+
+### conv2d: double-buffered local memory — -30% regression
+
+Two local memory tile sets to overlap load and compute. Doubled shared memory
+(8→16 KB) reduced workgroup occupancy. Result: 7.23 vs 5.58 s/step.
+
+### mul_mat f16: image textures for weight loading — no gain
+
+Routed f16 weight reads through `image1d_buffer_t` texture cache. A/B test:
+5.41 vs 5.41 s/step. Sequential coalesced `half4` access already optimal via L2.
+
+### mul_mat Q8_0: image textures for weight loading — no gain
+
+Same approach for Q8_0 int8 weights with `CL_RGBA, CL_SIGNED_INT8`. A/B test:
+5.40 vs 5.41 s/step. Same conclusion — sequential access well-served by L2.
+
+### mul_mat Q8_0: int8 dot product with dynamic activation quantization — -26% regression
+
+Used `cl_khr_integer_dot_product` `dot(char4, char4)` hardware instruction.
+Required dynamically quantizing f32 activations to int8 per column per K-tile
+(find max_abs, compute scale, convert). The quantization overhead (serialized
+to 64 threads per column scan) exceeded the 4× instruction reduction from
+hardware dot product. Result: 6.80 vs 5.41 s/step.
+
+Correctness test confirmed the kernel produced valid results (max_abs_err
+0.03–0.27 across 64–1280 dimension tests), but the performance regression
+makes it impractical.
+
+---
+
+## Remaining optimization avenues
 
 - **VAE tiling**: `--vae-tiling` for 768×768+ resolution on GPU.
 
-- **q8_0 conv2d kernel**: Direct convolution on quantized weights using
-  `cl_khr_integer_dot_product` / `cl_qcom_dot_product8` — avoids dequantization.
+- **q8_0 conv2d kernel**: Direct convolution on quantized weights — avoids
+  dequantization for the 291 q8_0 conv weight tensors.
