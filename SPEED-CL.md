@@ -15,6 +15,8 @@ Benchmark: 512×512, 20 steps, Euler A, seed 42, `--diffusion-conv-direct --vae-
 | 2 | **Optimized (BS_CRS=32, 1×1 fast path, contiguous weights)** | **6.27 s/it** | **125.33s** | **10.49s** | **136.16s** | **1.12×** |
 | ~~3~~ | ~~Eliminate convert_float in inner loop (rejected)~~ | ~~5.82 s/it~~ | — | — | — | ~~no gain~~ |
 | 4 | **Incremental spatial indices in B-tile loading** | **5.63 s/it** | **~112.6s (est.)** | **~9.0s** | **~121.6s (est.)** | **1.25×** |
+| ~~5~~ | ~~Double-buffered local memory (rejected)~~ | ~~7.23 s/it~~ | — | — | — | ~~-30% regression~~ |
+| 6 | **Image texture cache for weight loading** | **5.46 s/it** | **~109.2s (est.)** | **~8.8s** | **~118.0s (est.)** | **1.30×** |
 
 ---
 
