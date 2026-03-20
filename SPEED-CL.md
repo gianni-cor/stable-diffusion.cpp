@@ -268,6 +268,61 @@ page granularity, and driver overhead.
 
 ---
 
+## Benchmark image (clean build from git)
+
+Built from scratch on the device (`cmake .. -DSD_OPENCL=ON && cmake --build .`),
+ggml commit `2ceffce2`, all three conv2d optimizations active.
+
+![polar_bear_benchmark.png](polar_bear_benchmark.png)
+
+**Prompt:**
+```
+-p "A white polar bear catching a salmon in a rushing mountain river, realistic nature photography, water splashing, golden hour sunlight, 4k, detailed fur, sharp focus"
+-n "blurry, bad quality, deformed, low resolution, cartoon, painting, illustration, watermark, text"
+```
+
+**Flags:**
+```
+--diffusion-conv-direct --vae-conv-direct --mmap
+--steps 30 --seed 42 --cfg-scale 9.0 --sampling-method dpm++2m
+-W 512 -H 512
+```
+
+**Performance:**
+
+| Metric | Value |
+|---|---|
+| Per step | **5.36 s/it** (steady, 5.35–5.44 range) |
+| Sampling (30 steps) | **161.74s** |
+| VAE decode | **9.48s** |
+| Total | **171.80s** |
+| GPU temp | 28.9°C → 56.0°C (no thermal throttling) |
+
+**GPU memory (from `/proc/meminfo GpuTotal`):**
+
+| Phase | GpuTotal |
+|---|---|
+| Idle baseline | 167 MB |
+| Params loaded + sampling | ~2567 MB |
+| Peak (VAE decode) | **2899 MB** |
+
+**Compute buffers (VRAM):**
+
+| Component | Size |
+|---|---|
+| U-Net compute | 367.70 MB |
+| VAE compute | 704.06 MB |
+| CLIP compute | 1.89 MB |
+| Model params | 2199.61 MB |
+
+**Notes:**
+- Flash attention (`--diffusion-fa --fa`) is NOT used — the OpenCL flash attention
+  kernel produces incorrect output for SD v2.1 v-prediction mode (upstream bug).
+- v-prediction mode correctly detected with optimized conv2d kernel.
+- Image quality matches the unmodified baseline kernel (verified side-by-side).
+
+---
+
 ## Remaining optimization avenues
 
 - **mul_mat kernel tuning**: The U-Net spends most time in mul_mat (attention, linear
