@@ -167,7 +167,6 @@ this limit.
 | Per step | 27.16 s/it | 14.74 s/it | 7.07 s/it | 6.27 s/it |
 | Sampling (20 steps) | ~543s (est.) | 294.88s | 141.33s | 125.33s |
 | VAE decode | 74.23s | crash | 10.34s | 10.49s |
-| Peak GPU mem | 0 MB | 3193 MB | — | 3287 MB |
 | **GPU speedup vs CPU** | — | 1.8× | 3.8× | **4.3×** |
 
 ---
@@ -179,45 +178,25 @@ ggml commit `2ceffce2`, all three conv2d optimizations active.
 
 ![polar_bear_benchmark.png](polar_bear_benchmark.png)
 
-**Prompt:**
-```
--p "A white polar bear catching a salmon in a rushing mountain river, realistic nature photography, water splashing, golden hour sunlight, 4k, detailed fur, sharp focus"
--n "blurry, bad quality, deformed, low resolution, cartoon, painting, illustration, watermark, text"
-```
-
-**Flags:**
-```
---diffusion-conv-direct --vae-conv-direct --mmap
---steps 30 --seed 42 --cfg-scale 9.0 --sampling-method dpm++2m
--W 512 -H 512
+**Command:**
+```bash
+LD_LIBRARY_PATH=/vendor/lib64:$LD_LIBRARY_PATH build-cl/bin/sd-cli \
+  -m models/stable-diffusion-v2-1-Q8_0.gguf \
+  -p 'a polar bear standing in a shallow river catching a salmon in its mouth, splashing water, mountain forest background, golden hour sunlight, wildlife photography, national geographic style, sharp focus, 8k' \
+  -n 'blurry, bad quality, deformed, extra limbs, disfigured, low resolution, cartoon, painting, illustration, watermark, text, ugly' \
+  -W 512 -H 512 --mmap --diffusion-conv-direct --vae-conv-direct \
+  --steps 30 --seed 7 --cfg-scale 9.0 --sampling-method dpm++2m \
+  -o output.png
 ```
 
 **Performance:**
 
 | Metric | Value |
 |---|---|
-| Per step | **5.36 s/it** (steady, 5.35–5.44 range) |
-| Sampling (30 steps) | **161.74s** |
-| VAE decode | **9.48s** |
-| Total | **171.80s** |
-| GPU temp | 28.9°C → 56.0°C (no thermal throttling) |
-
-**GPU memory (from `/proc/meminfo GpuTotal`):**
-
-| Phase | GpuTotal |
-|---|---|
-| Idle baseline | 167 MB |
-| Params loaded + sampling | ~2567 MB |
-| Peak (VAE decode) | **2899 MB** |
-
-**Compute buffers (VRAM):**
-
-| Component | Size |
-|---|---|
-| U-Net compute | 367.70 MB |
-| VAE compute | 704.06 MB |
-| CLIP compute | 1.89 MB |
-| Model params | 2199.61 MB |
+| Per step | **5.35 s/it** (steady) |
+| Sampling (30 steps) | **161.88s** |
+| VAE decode | **9.19s** |
+| Total | **171.64s** |
 
 **Notes:**
 - Flash attention (`--diffusion-fa --fa`) is NOT used — the OpenCL flash attention
